@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { Search, UserPlus, Users, Mail, BookOpen, ArrowLeft } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { useRouter } from 'next/navigation';
-import classGuardAPI from '@/lib/analytics-api';
+import { sessionsAPI, subjectsAPI, groupsAPI, dashboardAPI, studentsAPI, alertsAPI } from '@/lib/analytics-api';
 
 interface Student {
   id: string;
@@ -34,7 +34,7 @@ export default function TeacherStudentsPage() {
   const loadStudents = async () => {
     try {
       setIsLoading(true);
-      const response = await classGuardAPI.students.list({ limit: 100 });
+      const response = await studentsAPI.list({ limit: 100 });
       setStudents(response.students || []);
       setFilteredStudents(response.students || []);
     } catch (error) {

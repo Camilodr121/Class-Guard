@@ -1,7 +1,9 @@
 # backend/app/api/endpoints/academic.py
+
 """
 Endpoints API para gestión académica (Asignaturas y Grupos)
 """
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
@@ -9,10 +11,11 @@ from typing import List, Optional
 from uuid import UUID
 from datetime import datetime
 
+
 from app.db.session import get_db
 from app.models.user import User, UserRole
 from app.models.academic import Subject, Group, GroupMembership
-from app.models.metrics import ClassSession, SessionAttendance, AttentionMetric, SessionStatus
+from app.models.metrics import ClassSession, SessionAttendance, AttentionMetric, Alert, SessionStatus, AttentionLevel
 from app.schemas.academic import (
     SubjectCreate, SubjectUpdate, SubjectResponse, SubjectWithStats,
     GroupCreate, GroupUpdate, GroupResponse, GroupWithStudents, GroupWithStats,
@@ -23,11 +26,11 @@ from app.api.endpoints.auth import get_current_user
 
 router = APIRouter()
 
-# ==================== SUBJECT ENDPOINTS ====================
+# ==================== SUBJECTS ====================
 
-@router.post("/subjects", response_model=SubjectResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/subjects", response_model=SubjectResponse)
 async def create_subject(
-    subject_data: SubjectCreate,
+    subject: SubjectCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -35,73 +38,86 @@ async def create_subject(
     if current_user.role != UserRole.TEACHER:
         raise HTTPException(status_code=403, detail="Only teachers can create subjects")
     
-    # Verificar que el código no exista
-    existing = db.query(Subject).filter(Subject.code == subject_data.code).first()
+    # Verificar si ya existe
+    existing = db.query(Subject).filter(
+        Subject.teacher_id == current_user.id,
+        Subject.code == subject.code,
+        Subject.is_active == True
+    ).first()
+    
     if existing:
-        raise HTTPException(status_code=400, detail=f"Subject with code {subject_data.code} already exists")
+        raise HTTPException(status_code=400, detail="Subject with this code already exists")
     
-    # Si no se especifica teacher_id, asignar al usuario actual
-    if not subject_data.teacher_id:
-        subject_data.teacher_id = current_user.id
-    
-    subject = Subject(**subject_data.dict())
-    db.add(subject)
-    db.commit()
-    db.refresh(subject)
-    
-    return SubjectResponse(
-        **subject.__dict__,
-        teacher_name=f"{subject.teacher.first_name} {subject.teacher.last_name}" if subject.teacher else None,
-        total_groups=0,
-        total_students=0
+    subject_data = subject.dict()
+    db_subject = Subject(
+       name=subject_data['name'],
+       code=subject_data['code'],
+       description=subject_data.get('description'),
+       credits=subject_data.get('credits', 3),
+       semester=subject_data.get('semester'),
+       department=subject_data.get('department'),
+       teacher_id=current_user.id
     )
 
-@router.get("/subjects", response_model=List[SubjectResponse])
+    
+    db.add(db_subject)
+    db.commit()
+    db.refresh(db_subject)
+    
+    return db_subject
+
+
+@router.get("/subjects", response_model=List[SubjectWithStats])
 async def list_subjects(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    is_active: Optional[bool] = Query(None),
-    teacher_id: Optional[UUID] = Query(None),
-    search: Optional[str] = Query(None),
+    is_active: Optional[bool] = None,
+    search: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Listar asignaturas con filtros"""
-    query = db.query(Subject)
+    """Listar asignaturas del profesor"""
+    if current_user.role != UserRole.TEACHER:
+        raise HTTPException(status_code=403, detail="Only teachers can access this")
     
-    # Filtros
-    if is_active is not None:
+    query = db.query(Subject).filter(Subject.teacher_id == current_user.id)
+
+# CRÍTICO: Si no se especifica is_active, por defecto solo activos
+    if is_active is None:
+        query = query.filter(Subject.is_active == True)
+    elif is_active is not None:
         query = query.filter(Subject.is_active == is_active)
-    
-    if teacher_id:
-        query = query.filter(Subject.teacher_id == teacher_id)
-    elif current_user.role == UserRole.TEACHER:
-        # Profesores solo ven sus asignaturas
-        query = query.filter(Subject.teacher_id == current_user.id)
+
     
     if search:
         search_term = f"%{search}%"
         query = query.filter(
-            (Subject.name.ilike(search_term)) | 
-            (Subject.code.ilike(search_term))
+            (Subject.name.ilike(search_term)) | (Subject.code.ilike(search_term))
         )
     
     subjects = query.offset(skip).limit(limit).all()
     
-    # Enriquecer con estadísticas
     result = []
     for subject in subjects:
-        total_groups = len(subject.groups)
-        total_students = sum(g.current_students_count for g in subject.groups)
+        total_groups = db.query(Group).filter(
+            Group.subject_id == subject.id,
+            Group.is_active == True
+        ).count()
         
-        result.append(SubjectResponse(
+        total_students = db.query(func.count(GroupMembership.id)).join(Group).filter(
+            Group.subject_id == subject.id,
+            Group.is_active == True,
+            GroupMembership.is_active == True
+        ).scalar() or 0
+        
+        result.append({
             **subject.__dict__,
-            teacher_name=f"{subject.teacher.first_name} {subject.teacher.last_name}" if subject.teacher else None,
-            total_groups=total_groups,
-            total_students=total_students
-        ))
+            "total_groups": total_groups,
+            "total_students": total_students
+        })
     
     return result
+
 
 @router.get("/subjects/{subject_id}", response_model=SubjectWithStats)
 async def get_subject(
@@ -115,43 +131,31 @@ async def get_subject(
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
     
-    # Verificar permisos
     if current_user.role == UserRole.TEACHER and str(subject.teacher_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    # Calcular estadísticas
-    total_groups = len(subject.groups)
-    total_students = sum(g.current_students_count for g in subject.groups)
-    
-    # Sesiones completadas
-    sessions = db.query(ClassSession).join(Group).filter(
-        Group.subject_id == subject_id,
-        ClassSession.status == SessionStatus.COMPLETED
-    ).all()
-    
-    total_sessions = len(sessions)
-    avg_attention = sum(s.average_attention_score or 0 for s in sessions) / total_sessions if total_sessions > 0 else None
-    
-    # Sesiones activas
-    active_sessions = db.query(ClassSession).join(Group).filter(
-        Group.subject_id == subject_id,
-        ClassSession.status == SessionStatus.ACTIVE
+    total_groups = db.query(Group).filter(
+        Group.subject_id == subject.id,
+        Group.is_active == True
     ).count()
     
-    return SubjectWithStats(
+    total_students = db.query(func.count(GroupMembership.id)).join(Group).filter(
+        Group.subject_id == subject.id,
+        Group.is_active == True,
+        GroupMembership.is_active == True
+    ).scalar() or 0
+    
+    return {
         **subject.__dict__,
-        teacher_name=f"{subject.teacher.first_name} {subject.teacher.last_name}" if subject.teacher else None,
-        total_groups=total_groups,
-        total_students=total_students,
-        average_attention_score=avg_attention,
-        total_sessions=total_sessions,
-        active_sessions=active_sessions
-    )
+        "total_groups": total_groups,
+        "total_students": total_students
+    }
+
 
 @router.put("/subjects/{subject_id}", response_model=SubjectResponse)
 async def update_subject(
     subject_id: UUID,
-    subject_data: SubjectUpdate,
+    subject_update: SubjectUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -161,25 +165,22 @@ async def update_subject(
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
     
-    if current_user.role != UserRole.TEACHER or str(subject.teacher_id) != str(current_user.id):
-        raise HTTPException(status_code=403, detail="Not authorized")
+    if current_user.role != UserRole.TEACHER:
+        raise HTTPException(status_code=403, detail="Only teachers can update subjects")
     
-    # Actualizar campos
-    for field, value in subject_data.dict(exclude_unset=True).items():
+    if str(subject.teacher_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized to update this subject")
+    
+    for field, value in subject_update.dict(exclude_unset=True).items():
         setattr(subject, field, value)
     
-    subject.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(subject)
     
-    return SubjectResponse(
-        **subject.__dict__,
-        teacher_name=f"{subject.teacher.first_name} {subject.teacher.last_name}" if subject.teacher else None,
-        total_groups=len(subject.groups),
-        total_students=sum(g.current_students_count for g in subject.groups)
-    )
+    return subject
 
-@router.delete("/subjects/{subject_id}", status_code=status.HTTP_204_NO_CONTENT)
+
+@router.delete("/subjects/{subject_id}")
 async def delete_subject(
     subject_id: UUID,
     db: Session = Depends(get_db),
@@ -191,97 +192,122 @@ async def delete_subject(
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
     
-    if current_user.role != UserRole.TEACHER or str(subject.teacher_id) != str(current_user.id):
-        raise HTTPException(status_code=403, detail="Not authorized")
+    # Verificar permisos
+    if current_user.role != UserRole.TEACHER:
+        raise HTTPException(status_code=403, detail="Only teachers can delete subjects")
     
+    # Verificar que sea el dueño
+    if str(subject.teacher_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized to delete this subject")
+    
+    # Soft delete
     subject.is_active = False
+    
+    # También desactivar grupos
+    groups = db.query(Group).filter(Group.subject_id == subject_id).all()
+    for group in groups:
+        group.is_active = False
+    
     db.commit()
+    
+    return {"message": "Subject deleted successfully"}
 
-# ==================== GROUP ENDPOINTS ====================
 
-@router.post("/groups", response_model=GroupResponse, status_code=status.HTTP_201_CREATED)
+# ==================== GROUPS ====================
+
+@router.post("/groups", response_model=GroupResponse)
 async def create_group(
-    group_data: GroupCreate,
+    group: GroupCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Crear nuevo grupo (solo profesores)"""
+    """Crear nuevo grupo"""
     if current_user.role != UserRole.TEACHER:
         raise HTTPException(status_code=403, detail="Only teachers can create groups")
     
     # Verificar que la asignatura existe y pertenece al profesor
-    subject = db.query(Subject).filter(Subject.id == group_data.subject_id).first()
+    subject = db.query(Subject).filter(Subject.id == group.subject_id).first()
     if not subject:
         raise HTTPException(status_code=404, detail="Subject not found")
     
     if str(subject.teacher_id) != str(current_user.id):
-        raise HTTPException(status_code=403, detail="Not authorized for this subject")
+        raise HTTPException(status_code=403, detail="Not authorized")
     
-    # Verificar que el código no exista en esta asignatura
+    # Verificar si ya existe un grupo con ese código
     existing = db.query(Group).filter(
-        Group.subject_id == group_data.subject_id,
-        Group.code == group_data.code
+        Group.subject_id == group.subject_id,
+        Group.code == group.code,
+        Group.is_active == True
     ).first()
     
     if existing:
-        raise HTTPException(status_code=400, detail=f"Group with code {group_data.code} already exists in this subject")
+        raise HTTPException(status_code=400, detail="Group with this code already exists")
     
-    group = Group(
-        **group_data.dict(),
-        created_by=current_user.id
+    group_data = group.dict()
+    db_group = Group(
+       name=group_data['name'],
+       code=group_data['code'],
+       subject_id=group_data['subject_id'],
+       schedule_day=group_data.get('schedule_day'),
+       schedule_time=group_data.get('schedule_time'),
+       duration_minutes=group_data.get('duration_minutes', 90),
+       classroom=group_data.get('classroom'),
+       max_students=group_data.get('max_students', 30),
+       created_by=current_user.id
     )
-    db.add(group)
+
+    db.add(db_group)
     db.commit()
-    db.refresh(group)
+    db.refresh(db_group)
     
-    return GroupResponse(
-        **group.__dict__,
-        subject_name=subject.name,
-        subject_code=subject.code,
-        current_students_count=0,
-        is_full=False
-    )
+    return db_group
+
 
 @router.get("/groups", response_model=List[GroupResponse])
 async def list_groups(
-    subject_id: Optional[UUID] = Query(None),
+    subject_id: Optional[UUID] = None,
+    skip: int = 0,
+    limit: int = 100,
     is_active: Optional[bool] = Query(None),
-    skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Listar grupos con filtros"""
-    query = db.query(Group).join(Subject)
+    """Listar grupos del profesor (solo activos por defecto)"""
     
-    # Filtros
+    # Base query - JOIN con Subject para filtrar por teacher_id
+    query = db.query(Group).join(
+        Subject, Group.subject_id == Subject.id
+    ).filter(
+        Subject.teacher_id == current_user.id,  # ✅ FILTRAR POR PROFESOR VÍA SUBJECT
+        Group.is_active == True  # ✅ SOLO GRUPOS ACTIVOS
+    )
+    
+    # Filtro opcional por asignatura
     if subject_id:
         query = query.filter(Group.subject_id == subject_id)
     
-    if is_active is not None:
-        query = query.filter(Group.is_active == is_active)
-    
-    # Profesores solo ven sus grupos
-    if current_user.role == UserRole.TEACHER:
-        query = query.filter(Subject.teacher_id == current_user.id)
-    elif current_user.role == UserRole.STUDENT:
-        # Estudiantes solo ven grupos en los que están matriculados
-        query = query.join(GroupMembership).filter(
-            GroupMembership.student_id == current_user.id,
-            GroupMembership.is_active == True
-        )
-    
+    # Obtener grupos con info de estudiantes
     groups = query.offset(skip).limit(limit).all()
     
+    # Agregar conteo de estudiantes
     result = []
     for group in groups:
-        result.append(GroupResponse(
-            **group.__dict__,
-            subject_name=group.subject.name,
-            subject_code=group.subject.code,
-            current_students_count=group.current_students_count,
-            is_full=group.is_full
-        ))
+        group_dict = {
+            "id": group.id,
+            "name": group.name,
+            "code": group.code,
+            "subject_id": group.subject_id,
+            "subject_name": group.subject.name if group.subject else "",
+            "subject_code": group.subject.code if group.subject else "",
+            "max_students": group.max_students,
+            "schedule_day": group.schedule_day,
+            "schedule_time": group.schedule_time,
+            "student_count": len([m for m in group.memberships if m.is_active]),
+            "created_at": group.created_at,
+            "created_by": group.created_by,
+            "is_active": group.is_active
+        }
+        result.append(group_dict)
     
     return result
 
@@ -291,7 +317,7 @@ async def get_group(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Obtener detalles de un grupo con lista de estudiantes"""
+    """Obtener detalles de un grupo con estudiantes"""
     group = db.query(Group).filter(Group.id == group_id).first()
     
     if not group:
@@ -301,14 +327,6 @@ async def get_group(
     if current_user.role == UserRole.TEACHER:
         if str(group.subject.teacher_id) != str(current_user.id):
             raise HTTPException(status_code=403, detail="Not authorized")
-    elif current_user.role == UserRole.STUDENT:
-        membership = db.query(GroupMembership).filter(
-            GroupMembership.group_id == group_id,
-            GroupMembership.student_id == current_user.id,
-            GroupMembership.is_active == True
-        ).first()
-        if not membership:
-            raise HTTPException(status_code=403, detail="Not enrolled in this group")
     
     # Obtener estudiantes
     memberships = db.query(GroupMembership).filter(
@@ -321,181 +339,214 @@ async def get_group(
         student = membership.student
         students.append({
             "id": str(student.id),
-            "name": f"{student.first_name} {student.last_name}",
+            "first_name": student.first_name,
+            "last_name": student.last_name,
             "email": student.email,
             "enrolled_at": membership.enrolled_at
         })
     
-    return GroupWithStudents(
-        **group.__dict__,
-        subject_name=group.subject.name,
-        subject_code=group.subject.code,
-        current_students_count=len(students),
-        is_full=group.is_full,
-        students=students
-    )
+    # ✅ CONVERTIR schedule_time A STRING ANTES DE DEVOLVER
+    return {
+        "id": group.id,
+        "name": group.name,
+        "code": group.code,
+        "subject_id": group.subject_id,
+        "subject_code": group.subject.code if group.subject else None,
+        "schedule_day": group.schedule_day,
+        "schedule_time": str(group.schedule_time) if group.schedule_time else None,  # ✅ AQUÍ ESTÁ EL FIX
+        "max_students": group.max_students,
+        "duration_minutes": group.duration_minutes,
+        "classroom": group.classroom,
+        "created_at": group.created_at,
+        "created_by": group.created_by,
+        "is_active": group.is_active,
+        "students": students
+    }
 
-@router.get("/groups/{group_id}/stats", response_model=GroupStatistics)
-async def get_group_statistics(
+
+@router.put("/groups/{group_id}", response_model=GroupResponse)
+async def update_group(
+    group_id: UUID,
+    group_update: GroupUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Actualizar grupo"""
+    group = db.query(Group).filter(Group.id == group_id).first()
+    
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    if current_user.role != UserRole.TEACHER:
+        raise HTTPException(status_code=403, detail="Only teachers can update groups")
+    
+    if str(group.subject.teacher_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized")
+    
+    for field, value in group_update.dict(exclude_unset=True).items():
+        setattr(group, field, value)
+    
+    db.commit()
+    db.refresh(group)
+    
+    return group
+
+
+@router.delete("/groups/{group_id}")
+async def delete_group(
     group_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Obtener estadísticas de un grupo"""
+    """Eliminar grupo (soft delete)"""
     group = db.query(Group).filter(Group.id == group_id).first()
     
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
     
     # Verificar permisos
-    if current_user.role == UserRole.TEACHER and str(group.subject.teacher_id) != str(current_user.id):
+    if current_user.role != UserRole.TEACHER:
+        raise HTTPException(status_code=403, detail="Only teachers can delete groups")
+    
+    # Verificar que el profesor sea el dueño de la asignatura
+    if str(group.subject.teacher_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    # Estadísticas generales
-    total_students = group.current_students_count
+    # Soft delete
+    group.is_active = False
+    db.commit()
     
-    sessions = db.query(ClassSession).filter(
-        ClassSession.group_id == group_id,
-        ClassSession.status == SessionStatus.COMPLETED
-    ).all()
-    
-    total_sessions = len(sessions)
-    avg_attention = sum(s.average_attention_score or 0 for s in sessions) / total_sessions if total_sessions > 0 else None
-    
-    # Tasa de asistencia
-    if total_sessions > 0:
-        total_attendance = sum(s.total_students_present for s in sessions)
-        expected_attendance = total_sessions * total_students
-        attendance_rate = (total_attendance / expected_attendance * 100) if expected_attendance > 0 else 0
-    else:
-        attendance_rate = 0
-    
-    # Estudiantes más atentos
-    most_attentive = db.query(
-        User.id,
-        User.first_name,
-        User.last_name,
-        func.avg(SessionAttendance.average_attention_score).label('avg_score')
-    ).join(SessionAttendance).join(ClassSession).filter(
-        ClassSession.group_id == group_id,
-        SessionAttendance.average_attention_score.isnot(None)
-    ).group_by(User.id, User.first_name, User.last_name).order_by(
-        func.avg(SessionAttendance.average_attention_score).desc()
-    ).limit(5).all()
-    
-    most_attentive_students = [
-        {
-            "id": str(student.id),
-            "name": f"{student.first_name} {student.last_name}",
-            "average_score": round(student.avg_score, 2)
-        }
-        for student in most_attentive
-    ]
-    
-    # Estudiantes que necesitan atención
-    needs_attention = db.query(
-        User.id,
-        User.first_name,
-        User.last_name,
-        func.avg(SessionAttendance.average_attention_score).label('avg_score')
-    ).join(SessionAttendance).join(ClassSession).filter(
-        ClassSession.group_id == group_id,
-        SessionAttendance.average_attention_score.isnot(None)
-    ).group_by(User.id, User.first_name, User.last_name).having(
-        func.avg(SessionAttendance.average_attention_score) < 60
-    ).order_by(
-        func.avg(SessionAttendance.average_attention_score).asc()
-    ).limit(5).all()
-    
-    needs_attention_students = [
-        {
-            "id": str(student.id),
-            "name": f"{student.first_name} {student.last_name}",
-            "average_score": round(student.avg_score, 2)
-        }
-        for student in needs_attention
-    ]
-    
-    return GroupStatistics(
-        group_id=group_id,
-        group_name=group.name,
-        total_students=total_students,
-        total_sessions=total_sessions,
-        average_attention_score=avg_attention,
-        attendance_rate=attendance_rate,
-        most_attentive_students=most_attentive_students,
-        needs_attention_students=needs_attention_students
-    )
+    return {"message": "Group deleted successfully"}
 
-# ==================== GROUP MEMBERSHIP ENDPOINTS ====================
 
-@router.post("/groups/{group_id}/enroll", response_model=GroupMembershipResponse, status_code=status.HTTP_201_CREATED)
+# ==================== GROUP MEMBERSHIP ====================
+
+@router.post("/groups/{group_id}/enroll", response_model=GroupMembershipResponse)
 async def enroll_student(
     group_id: UUID,
-    membership_data: GroupMembershipCreate,
+    membership: GroupMembershipCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Matricular un estudiante en un grupo"""
+    """Matricular estudiante en grupo"""
     if current_user.role != UserRole.TEACHER:
         raise HTTPException(status_code=403, detail="Only teachers can enroll students")
     
+    # Verificar que el grupo existe
     group = db.query(Group).filter(Group.id == group_id).first()
     if not group:
         raise HTTPException(status_code=404, detail="Group not found")
     
+    # Verificar permisos
     if str(group.subject.teacher_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    # Verificar que el estudiante existe
-    student = db.query(User).filter(User.id == membership_data.student_id, User.role == UserRole.STUDENT).first()
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
-    
-    # Verificar si ya está matriculado
-    existing = db.query(GroupMembership).filter(
+    # ✅ VERIFICACIÓN MEJORADA - Buscar CUALQUIER registro (activo o inactivo)
+    existing_any = db.query(GroupMembership).filter(
         GroupMembership.group_id == group_id,
-        GroupMembership.student_id == membership_data.student_id
+        GroupMembership.student_id == membership.student_id
     ).first()
     
-    if existing and existing.is_active:
-        raise HTTPException(status_code=400, detail="Student already enrolled in this group")
+    if existing_any:
+        if existing_any.is_active:
+            # Ya está matriculado activamente
+            raise HTTPException(
+                status_code=400, 
+                detail="El estudiante ya está matriculado en este grupo"
+            )
+        else:
+            # Estaba inactivo, reactivarlo
+            existing_any.is_active = True
+            existing_any.enrolled_at = datetime.now()
+            existing_any.unenrolled_at = None
+            
+            try:
+                db.commit()
+                db.refresh(existing_any)
+                
+                # Obtener datos del estudiante
+                student = db.query(User).filter(User.id == membership.student_id).first()
+                
+                # ✅ CONCATENAR NOMBRES CORRECTAMENTE
+                student_name = f"{student.first_name} {student.last_name}" if student else "Unknown"
+                
+                return GroupMembershipResponse(
+                    id=existing_any.id,
+                    group_id=existing_any.group_id,
+                    student_id=existing_any.student_id,
+                    student_name=student_name,
+                    student_email=student.email if student else "unknown@email.com",
+                    enrolled_at=existing_any.enrolled_at,
+                    unenrolled_at=existing_any.unenrolled_at,
+                    is_active=existing_any.is_active
+                )
+            except Exception as e:
+                db.rollback()
+                print(f"❌ Error al reactivar matrícula: {str(e)}")
+                raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
     
-    # Verificar capacidad
-    if group.is_full:
-        raise HTTPException(status_code=400, detail="Group is full")
+    # ✅ Verificar cupo disponible
+    current_count = db.query(GroupMembership).filter(
+        GroupMembership.group_id == group_id,
+        GroupMembership.is_active == True
+    ).count()
     
-    # Crear o reactivar membresía
-    if existing:
-        existing.is_active = True
-        existing.enrolled_at = datetime.utcnow()
-        existing.unenrolled_at = None
-        membership = existing
-    else:
-        membership = GroupMembership(
-            group_id=group_id,
-            student_id=membership_data.student_id,
-            enrolled_by=current_user.id
+    if current_count >= group.max_students:
+        raise HTTPException(
+            status_code=400,
+            detail=f"El grupo está completo ({group.max_students}/{group.max_students})"
         )
-        db.add(membership)
     
-    db.commit()
-    db.refresh(membership)
+    # ✅ Verificar que el estudiante existe
+    student = db.query(User).filter(
+        User.id == membership.student_id,
+        User.role == UserRole.STUDENT
+    ).first()
     
-    return GroupMembershipResponse(
-        **membership.__dict__,
-        student_name=f"{student.first_name} {student.last_name}",
-        student_email=student.email
+    if not student:
+        raise HTTPException(status_code=404, detail="Estudiante no encontrado")
+    
+    # Crear nueva matrícula
+    db_membership = GroupMembership(
+        group_id=group_id,
+        student_id=membership.student_id
     )
+    
+    try:
+        db.add(db_membership)
+        db.commit()
+        db.refresh(db_membership)
+        
+        # ✅ CONCATENAR NOMBRES CORRECTAMENTE
+        student_name = f"{student.first_name} {student.last_name}"
+        
+        return GroupMembershipResponse(
+            id=db_membership.id,
+            group_id=db_membership.group_id,
+            student_id=db_membership.student_id,
+            student_name=student_name,
+            student_email=student.email,
+            enrolled_at=db_membership.enrolled_at,
+            unenrolled_at=db_membership.unenrolled_at,
+            is_active=db_membership.is_active
+        )
+    except Exception as e:
+        db.rollback()
+        print(f"❌ Error al crear matrícula: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al matricular estudiante: {str(e)}"
+        )
 
-@router.post("/groups/{group_id}/enroll-bulk", status_code=status.HTTP_201_CREATED)
+
+@router.post("/groups/{group_id}/enroll-bulk")
 async def enroll_students_bulk(
     group_id: UUID,
-    membership_data: GroupMembershipBulkCreate,
+    data: GroupMembershipBulkCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Matricular múltiples estudiantes en un grupo"""
+    """Matricular múltiples estudiantes"""
     if current_user.role != UserRole.TEACHER:
         raise HTTPException(status_code=403, detail="Only teachers can enroll students")
     
@@ -507,61 +558,37 @@ async def enroll_students_bulk(
         raise HTTPException(status_code=403, detail="Not authorized")
     
     enrolled = []
-    errors = []
-    
-    for student_id in membership_data.student_ids:
-        try:
-            student = db.query(User).filter(User.id == student_id, User.role == UserRole.STUDENT).first()
-            if not student:
-                errors.append({"student_id": str(student_id), "error": "Student not found"})
-                continue
-            
-            existing = db.query(GroupMembership).filter(
-                GroupMembership.group_id == group_id,
-                GroupMembership.student_id == student_id
-            ).first()
-            
-            if existing and existing.is_active:
-                errors.append({"student_id": str(student_id), "error": "Already enrolled"})
-                continue
-            
-            if group.is_full:
-                errors.append({"student_id": str(student_id), "error": "Group is full"})
-                continue
-            
-            if existing:
-                existing.is_active = True
-                existing.enrolled_at = datetime.utcnow()
-                existing.unenrolled_at = None
-            else:
-                membership = GroupMembership(
-                    group_id=group_id,
-                    student_id=student_id,
-                    enrolled_by=current_user.id
-                )
-                db.add(membership)
-            
+    for student_id in data.student_ids:
+        existing = db.query(GroupMembership).filter(
+            GroupMembership.group_id == group_id,
+            GroupMembership.student_id == student_id,
+            GroupMembership.is_active == True
+        ).first()
+        
+        if not existing:
+            membership = GroupMembership(
+                group_id=group_id,
+                student_id=student_id
+            )
+            db.add(membership)
             enrolled.append(str(student_id))
-            
-        except Exception as e:
-            errors.append({"student_id": str(student_id), "error": str(e)})
     
     db.commit()
     
     return {
-        "enrolled_count": len(enrolled),
-        "enrolled_students": enrolled,
-        "errors": errors
+        "message": f"Enrolled {len(enrolled)} students",
+        "enrolled_ids": enrolled
     }
 
-@router.delete("/groups/{group_id}/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
+
+@router.delete("/groups/{group_id}/students/{student_id}")
 async def unenroll_student(
     group_id: UUID,
     student_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Desmatricular un estudiante de un grupo"""
+    """Desmatricular estudiante"""
     if current_user.role != UserRole.TEACHER:
         raise HTTPException(status_code=403, detail="Only teachers can unenroll students")
     
@@ -579,57 +606,57 @@ async def unenroll_student(
     ).first()
     
     if not membership:
-        raise HTTPException(status_code=404, detail="Student not enrolled in this group")
+        raise HTTPException(status_code=404, detail="Student not enrolled")
     
     membership.is_active = False
-    membership.unenrolled_at = datetime.utcnow()
     db.commit()
+    
+    return {"message": "Student unenrolled successfully"}
 
-# ==================== DASHBOARD STATS ====================
+
+# ==================== DASHBOARD ====================
 
 @router.get("/dashboard/teacher/stats", response_model=TeacherDashboardStats)
 async def get_teacher_dashboard_stats(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Obtener estadísticas del dashboard del profesor"""
+    """Estadísticas del dashboard del profesor"""
     if current_user.role != UserRole.TEACHER:
         raise HTTPException(status_code=403, detail="Only teachers can access this")
     
-    # Contar asignaturas
+    # Total asignaturas
     total_subjects = db.query(Subject).filter(
         Subject.teacher_id == current_user.id,
         Subject.is_active == True
     ).count()
     
-    # Contar grupos
+    # Total grupos
     total_groups = db.query(Group).join(Subject).filter(
         Subject.teacher_id == current_user.id,
         Group.is_active == True
     ).count()
     
-    # Contar estudiantes únicos
+    # Total estudiantes
     total_students = db.query(func.count(func.distinct(GroupMembership.student_id))).join(Group).join(Subject).filter(
         Subject.teacher_id == current_user.id,
+        Group.is_active == True,
         GroupMembership.is_active == True
     ).scalar() or 0
+    
+    # Sesiones hoy
+    today = datetime.now().date()
+    total_sessions_today = db.query(ClassSession).join(Group).join(Subject).filter(
+        Subject.teacher_id == current_user.id,
+        func.date(ClassSession.started_at) == today
+    ).count()
+
     
     # Sesiones activas
     active_sessions = db.query(ClassSession).join(Group).join(Subject).filter(
         Subject.teacher_id == current_user.id,
         ClassSession.status == SessionStatus.ACTIVE
     ).count()
-    
-    # Atención promedio hoy
-    today = datetime.utcnow().date()
-    today_sessions = db.query(ClassSession).join(Group).join(Subject).filter(
-        Subject.teacher_id == current_user.id,
-        func.date(ClassSession.started_at) == today,
-        ClassSession.average_attention_score.isnot(None)
-    ).all()
-    
-    average_attention_today = sum(s.average_attention_score for s in today_sessions) / len(today_sessions) if today_sessions else None
-    total_sessions_today = len(today_sessions)
     
     # Alertas hoy
     alerts_today = db.query(Alert).join(ClassSession).join(Group).join(Subject).filter(
@@ -638,12 +665,69 @@ async def get_teacher_dashboard_stats(
         Alert.is_acknowledged == False
     ).count()
     
-    return TeacherDashboardStats(
-        total_subjects=total_subjects,
-        total_groups=total_groups,
-        total_students=total_students,
-        active_sessions=active_sessions,
-        average_attention_today=average_attention_today,
-        total_sessions_today=total_sessions_today,
-        alerts_today=alerts_today
-    )
+    # Atención promedio hoy
+    avg_attention = db.query(
+        func.avg(AttentionMetric.attention_score)
+    ).select_from(ClassSession).join(
+        Group, Group.id == ClassSession.group_id
+    ).join(
+        Subject, Subject.id == Group.subject_id
+    ).join(
+        AttentionMetric, AttentionMetric.session_id == ClassSession.id
+    ).filter(
+        Subject.teacher_id == current_user.id,
+        func.date(ClassSession.started_at) == today
+    ).scalar()
+    
+    return {
+        "total_subjects": total_subjects,
+        "total_groups": total_groups,
+        "total_students": total_students,
+        "total_sessions_today": total_sessions_today,
+        "active_sessions": active_sessions,
+        "alerts_today": alerts_today,
+        "average_attention_today": float(avg_attention) if avg_attention else 0.0
+    }
+
+
+@router.get("/groups/{group_id}/stats", response_model=GroupStatistics)
+async def get_group_statistics(
+    group_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Estadísticas de un grupo"""
+    group = db.query(Group).filter(Group.id == group_id).first()
+    
+    if not group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    if current_user.role == UserRole.TEACHER:
+        if str(group.subject.teacher_id) != str(current_user.id):
+            raise HTTPException(status_code=403, detail="Not authorized")
+    
+    # Total estudiantes
+    total_students = db.query(GroupMembership).filter(
+        GroupMembership.group_id == group_id,
+        GroupMembership.is_active == True
+    ).count()
+    
+    # Total sesiones
+    total_sessions = db.query(ClassSession).filter(
+        ClassSession.group_id == group_id
+    ).count()
+    
+    # Atención promedio
+    avg_attention = db.query(func.avg(AttentionMetric.attention_score)).join(
+        SessionAttendance
+    ).join(ClassSession).filter(
+        ClassSession.group_id == group_id
+    ).scalar()
+    
+    return {
+        "group_id": str(group_id),
+        "total_students": total_students,
+        "total_sessions": total_sessions,
+        "average_attention": float(avg_attention) if avg_attention else 0.0,
+        "active_students": total_students
+    }

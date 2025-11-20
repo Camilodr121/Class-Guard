@@ -1,7 +1,9 @@
 # backend/app/api/endpoints/students.py
+
 """
 Endpoints para gestión de estudiantes
 """
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, func
@@ -15,7 +17,7 @@ from app.api.endpoints.auth import get_current_user
 
 router = APIRouter()
 
-@router.get("/students")
+@router.get("/")
 async def list_students(
     search: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
@@ -40,8 +42,8 @@ async def list_students(
         )
     
     students = query.offset(skip).limit(limit).all()
-    
     result = []
+    
     for student in students:
         # Contar grupos activos
         active_groups = db.query(GroupMembership).filter(
@@ -63,14 +65,14 @@ async def list_students(
         "students": result
     }
 
-@router.get("/students/{student_id}")
+
+@router.get("/{student_id}")
 async def get_student_detail(
     student_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Obtener detalles de un estudiante"""
-    
     # Verificar permisos
     if current_user.role == UserRole.STUDENT and str(current_user.id) != str(student_id):
         raise HTTPException(status_code=403, detail="Not authorized")
@@ -127,7 +129,8 @@ async def get_student_detail(
         "total_subjects": len(subjects)
     }
 
-@router.get("/students/{student_id}/enrollment")
+
+@router.get("/{student_id}/enrollment")
 async def get_student_enrollment_info(
     student_id: UUID,
     db: Session = Depends(get_db),
@@ -135,9 +138,15 @@ async def get_student_enrollment_info(
 ):
     """Obtener información de matrícula completa del estudiante"""
     
+    # Obtener estudiante primero
+    student = db.query(User).filter(User.id == student_id).first()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    
     # Verificar permisos
     if current_user.role == UserRole.STUDENT and str(current_user.id) != str(student_id):
         raise HTTPException(status_code=403, detail="Not authorized")
+    
     elif current_user.role == UserRole.TEACHER:
         # Verificar que el estudiante esté en algún grupo del profesor
         has_access = db.query(GroupMembership).join(Group).join(Subject).filter(
@@ -146,12 +155,18 @@ async def get_student_enrollment_info(
             GroupMembership.is_active == True
         ).first()
         
+        # Si no tiene acceso, devolver datos limitados en vez de error 403
         if not has_access:
-            raise HTTPException(status_code=403, detail="Not authorized")
-    
-    student = db.query(User).filter(User.id == student_id).first()
-    if not student:
-        raise HTTPException(status_code=404, detail="Student not found")
+            return {
+                "id": str(student.id),
+                "name": f"{student.first_name} {student.last_name}",
+                "email": student.email,
+                "groups": [],
+                "subjects": [],
+                "sessions": [],
+                "total_sessions": 0,
+                "average_attention": 0
+            }
     
     # Obtener información detallada
     memberships = db.query(GroupMembership).join(Group).join(Subject).filter(
@@ -194,12 +209,12 @@ async def get_student_enrollment_info(
         subjects_info[str(subject.id)]["groups"].append(group.code)
     
     return {
-        "student_id": str(student_id),
-        "student_name": f"{student.first_name} {student.last_name}",
-        "student_email": student.email,
-        "total_groups": len(groups_info),
-        "total_subjects": len(subjects_info),
-        "total_credits": sum(s["credits"] for s in subjects_info.values()),
+        "id": str(student_id),
+        "name": f"{student.first_name} {student.last_name}",
+        "email": student.email,
         "groups": groups_info,
-        "subjects": list(subjects_info.values())
+        "subjects": list(subjects_info.values()),
+        "sessions": [],  # Por ahora vacío
+        "total_sessions": 0,
+        "average_attention": 0
     }

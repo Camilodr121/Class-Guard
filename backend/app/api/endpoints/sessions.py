@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_
 from typing import List, Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 from datetime import datetime, timedelta
 
 from app.db.session import get_db
@@ -23,25 +23,41 @@ router = APIRouter()
 
 # ==================== SESSION MANAGEMENT ====================
 
-@router.post("/sessions/start")
+@router.post("/start")
 async def start_session(
     group_id: UUID,
     notes: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """Iniciar una nueva sesión de clase (solo profesores)"""
+    """Iniciar una nueva sesión de clase"""
+    
+    # Verificar que el usuario sea profesor
     if current_user.role != UserRole.TEACHER:
-        raise HTTPException(status_code=403, detail="Only teachers can start sessions")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only teachers can start sessions"
+        )
     
     # Verificar que el grupo existe y pertenece al profesor
-    group = db.query(Group).join(Subject).filter(
-        Group.id == group_id,
-        Subject.teacher_id == current_user.id
-    ).first()
-    
+    group = db.query(Group).filter(Group.id == group_id).first()
     if not group:
-        raise HTTPException(status_code=404, detail="Group not found or not authorized")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Group not found"
+        )
+    
+    if group.subject.teacher_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to start a session for this group"
+        )
+    
+    # ✅ CALCULAR expected_students ANTES de usarlo
+    expected_students = db.query(GroupMembership).filter(
+        GroupMembership.group_id == group_id,
+        GroupMembership.is_active == True
+    ).count()
     
     # Verificar si ya hay una sesión activa para este grupo
     active_session = db.query(ClassSession).filter(
@@ -50,28 +66,29 @@ async def start_session(
     ).first()
     
     if active_session:
+        # ✅ CORRECCIÓN: Ya tenemos expected_students definido arriba
         return {
             "message": "Session already active",
             "session_id": str(active_session.id),
             "group_id": str(group_id),
-            "subject_name": group.subject.name,
+            "subject_id": str(group.subject_id) if group.subject_id else None,
+            "subject_name": group.subject.name if group.subject else "Sin asignatura",
             "group_name": group.name,
-            "started_at": active_session.started_at
+            "started_at": active_session.started_at.isoformat(),
+            "status": SessionStatus.ACTIVE.value,
+            "expected_students": expected_students,
+            "present_students": db.query(SessionAttendance).filter(
+                SessionAttendance.session_id == active_session.id,
+                SessionAttendance.left_at.is_(None)
+            ).count()
         }
-    
-    # Contar estudiantes esperados
-    expected_students = db.query(GroupMembership).filter(
-        GroupMembership.group_id == group_id,
-        GroupMembership.is_active == True
-    ).count()
     
     # Crear nueva sesión
     new_session = ClassSession(
+        id=uuid4(),
         group_id=group_id,
         started_at=datetime.utcnow(),
         status=SessionStatus.ACTIVE,
-        total_students_present=0,
-        total_students_expected=expected_students,
         notes=notes
     )
     
@@ -79,17 +96,42 @@ async def start_session(
     db.commit()
     db.refresh(new_session)
     
+    # Crear registros de asistencia para todos los estudiantes del grupo
+    memberships = db.query(GroupMembership).filter(
+        GroupMembership.group_id == group_id,
+        GroupMembership.is_active == True
+    ).all()
+    
+    for membership in memberships:
+        attendance = SessionAttendance(
+            id=uuid4(),
+            session_id=new_session.id,
+            student_id=membership.student_id,
+            joined_at=datetime.utcnow(),
+            total_blinks=0,
+            total_yawns=0,
+            average_attention_score=100.0
+        )
+        db.add(attendance)
+    
+    db.commit()
+    
+    # ✅ Ya tenemos expected_students definido arriba
     return {
         "message": "Session started successfully",
         "session_id": str(new_session.id),
         "group_id": str(group_id),
-        "subject_name": group.subject.name,
+        "subject_id": str(group.subject_id) if group.subject_id else None,
+        "subject_name": group.subject.name if group.subject else "Sin asignatura",
         "group_name": group.name,
-        "started_at": new_session.started_at,
-        "expected_students": expected_students
+        "started_at": new_session.started_at.isoformat(),
+        "status": SessionStatus.ACTIVE.value,
+        "expected_students": expected_students,
+        "present_students": 0
     }
 
-@router.post("/sessions/{session_id}/end")
+
+@router.post("/{session_id}/end")
 async def end_session(
     session_id: UUID,
     notes: Optional[str] = None,
@@ -177,7 +219,7 @@ async def end_session(
         "attendance_rate": session.attendance_rate
     }
 
-@router.get("/sessions/active")
+@router.get("/active") 
 async def get_active_session(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -216,7 +258,7 @@ async def get_active_session(
         "present_students": session.total_students_present
     }
 
-@router.post("/sessions/{session_id}/join")
+@router.post("/{session_id}/join") 
 async def join_session(
     session_id: UUID,
     db: Session = Depends(get_db),
@@ -280,79 +322,103 @@ async def join_session(
         "joined_at": attendance.joined_at
     }
 
-@router.get("/sessions/{session_id}")
+@router.get("/{session_id}")
 async def get_session_detail(
     session_id: UUID,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """Obtener detalles completos de una sesión"""
-    session = db.query(ClassSession).filter(ClassSession.id == session_id).first()
+    
+    session = db.query(ClassSession).filter(
+        ClassSession.id == session_id
+    ).first()
     
     if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found"
+        )
     
     # Verificar permisos
+    group = session.group
     if current_user.role == UserRole.TEACHER:
-        if str(session.group.subject.teacher_id) != str(current_user.id):
-            raise HTTPException(status_code=403, detail="Not authorized")
-    elif current_user.role == UserRole.STUDENT:
-        membership = db.query(GroupMembership).filter(
-            GroupMembership.group_id == session.group_id,
-            GroupMembership.student_id == current_user.id
-        ).first()
-        if not membership:
-            raise HTTPException(status_code=403, detail="Not enrolled in this group")
+        if group.subject.teacher_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to access this session"
+            )
     
     # Obtener asistencias
     attendances = db.query(SessionAttendance).filter(
         SessionAttendance.session_id == session_id
     ).all()
     
-    students = []
+    # Calcular duración
+    duration_minutes = 0
+    if session.ended_at:
+        duration = session.ended_at - session.started_at
+        duration_minutes = int(duration.total_seconds() / 60)
+    else:
+        duration = datetime.utcnow() - session.started_at
+        duration_minutes = int(duration.total_seconds() / 60)
+    
+    # Calcular promedio de atención
+    avg_attention = db.query(func.avg(SessionAttendance.average_attention_score)).filter(
+        SessionAttendance.session_id == session_id,
+        SessionAttendance.average_attention_score.isnot(None)
+    ).scalar() or 0
+    
+    # Mapear estudiantes
+    # ✅ Filtrar estudiantes únicos (mantener el más reciente de cada uno)
+    unique_students_map = {}
     for attendance in attendances:
+        student_id = str(attendance.student_id)
+        if student_id not in unique_students_map or attendance.joined_at > unique_students_map[student_id].joined_at:
+            unique_students_map[student_id] = attendance
+
+    students = []
+    for attendance in unique_students_map.values():
         student = attendance.student
+    
+        # Obtener última métrica
+        latest_metric = db.query(AttentionMetric).filter(
+            AttentionMetric.session_id == session_id,
+            AttentionMetric.student_id == attendance.student_id
+        ).order_by(AttentionMetric.timestamp.desc()).first()
+    
         students.append({
             "id": str(student.id),
             "name": f"{student.first_name} {student.last_name}",
             "email": student.email,
-            "joined_at": attendance.joined_at,
-            "left_at": attendance.left_at,
-            "duration_minutes": attendance.duration_minutes,
-            "average_attention_score": attendance.average_attention_score,
-            "min_attention_score": attendance.min_attention_score,
-            "max_attention_score": attendance.max_attention_score,
-            "total_blinks": attendance.total_blinks,
-            "total_yawns": attendance.total_yawns,
-            "was_attentive": attendance.was_attentive
+            "joined_at": attendance.joined_at.isoformat(),
+            "average_attention_score": float(attendance.average_attention_score) if attendance.average_attention_score else 0.0,
+            "total_blinks": attendance.total_blinks or 0,
+            "total_yawns": attendance.total_yawns or 0,
+            "current_attention": float(latest_metric.attention_score) if latest_metric else None,
+            "last_update": latest_metric.timestamp.isoformat() if latest_metric else None,
+            "is_looking_away": latest_metric.looking_away if latest_metric else False
         })
     
     return {
         "id": str(session.id),
         "group_id": str(session.group_id),
-        "group_name": session.group.name,
-        "subject_id": str(session.group.subject_id),
-        "subject_name": session.group.subject.name,
-        "subject_code": session.group.subject.code,
-        "teacher": {
-            "id": str(session.group.subject.teacher.id),
-            "name": f"{session.group.subject.teacher.first_name} {session.group.subject.teacher.last_name}"
-        } if session.group.subject.teacher else None,
-        "started_at": session.started_at,
-        "ended_at": session.ended_at,
-        "duration_minutes": session.duration_minutes,
+        "group_name": group.name,
+        "subject_id": str(group.subject_id) if group.subject_id else None,
+        "subject_name": group.subject.name if group.subject else "Sin asignatura",
+        "started_at": session.started_at.isoformat(),
+        "ended_at": session.ended_at.isoformat() if session.ended_at else None,
+        "duration_minutes": duration_minutes,
         "status": session.status.value,
-        "average_attention_score": session.average_attention_score,
-        "total_students_expected": session.total_students_expected,
-        "total_students_present": session.total_students_present,
-        "attendance_rate": session.attendance_rate,
-        "notes": session.notes,
+        "average_attention_score": float(avg_attention),
+        "total_students_expected": len(set(str(a.student_id) for a in attendances)),  # ✅ Únicos totales
+        "total_students_present": len(set(str(a.student_id) for a in attendances if a.left_at is None)),  # ✅ Únicos activos
         "students": students
     }
 
 # ==================== HISTORY ENDPOINTS ====================
 
-@router.get("/sessions/history/teacher")
+@router.get("/history/teacher") 
 async def get_teacher_session_history(
     subject_id: Optional[UUID] = None,
     group_id: Optional[UUID] = None,
@@ -403,7 +469,7 @@ async def get_teacher_session_history(
         "sessions": history
     }
 
-@router.get("/sessions/history/student")
+@router.get("/history/student")
 async def get_student_session_history(
     subject_id: Optional[UUID] = None,
     days: int = 30,
@@ -455,7 +521,7 @@ async def get_student_session_history(
         "sessions": history
     }
 
-@router.get("/sessions/stats/subject/{subject_id}")
+@router.get("/stats/subject/{subject_id}")
 async def get_subject_session_stats(
     subject_id: UUID,
     days: int = 30,
@@ -510,3 +576,43 @@ async def get_subject_session_stats(
         "average_attendance_rate": round(avg_attendance, 2),
         "total_students": unique_students
     }
+@router.get("/active/student")
+async def get_student_active_session(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Obtiene la sesión activa para un estudiante.
+    El estudiante debe estar matriculado en el grupo de la sesión.
+    """
+    if current_user.role != UserRole.STUDENT:
+        raise HTTPException(status_code=403, detail="Solo estudiantes pueden acceder a este endpoint")
+    
+    # Buscar sesión activa donde el estudiante esté matriculado
+    active_session = db.query(ClassSession)\
+        .join(Group, ClassSession.group_id == Group.id)\
+        .join(GroupMembership, Group.id == GroupMembership.group_id)\
+        .filter(
+            GroupMembership.student_id == current_user.id,
+            GroupMembership.is_active == True,
+            ClassSession.status == SessionStatus.ACTIVE
+        )\
+        .order_by(ClassSession.started_at.desc())\
+        .first()
+    
+    if not active_session:
+        raise HTTPException(status_code=404, detail="No hay sesión activa")
+    
+    # Obtener datos del grupo y materia
+    group = db.query(Group).filter(Group.id == active_session.group_id).first()
+    subject = db.query(Subject).filter(Subject.id == group.subject_id).first() if group else None
+    
+    return {
+        "id": str(active_session.id),
+        "group_id": str(active_session.group_id),
+        "group_name": group.name if group else None,
+        "subject_name": subject.name if subject else None,
+        "started_at": active_session.started_at.isoformat(),
+        "status": active_session.status.value
+    }
+

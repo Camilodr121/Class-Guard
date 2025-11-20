@@ -1,11 +1,12 @@
 // frontend/src/app/dashboard/teacher/subjects/[id]/page.tsx
+
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { ArrowLeft, Plus, Users, Edit, Trash2, X, Calendar, Clock, UserPlus } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
-import classGuardAPI from '@/lib/analytics-api';
+import { sessionsAPI, subjectsAPI, groupsAPI, dashboardAPI, studentsAPI, alertsAPI } from '@/lib/analytics-api';
 
 interface Group {
   id: string;
@@ -49,7 +50,7 @@ export default function SubjectDetailPage() {
   const loadSubjectDetail = async () => {
     try {
       setIsLoading(true);
-      const data = await classGuardAPI.subjects.get(subjectId);
+      const data = await subjectsAPI.get(subjectId);
       setSubject(data);
     } catch (error) {
       console.error('Error loading subject:', error);
@@ -60,7 +61,7 @@ export default function SubjectDetailPage() {
 
   const loadGroups = async () => {
     try {
-      const data = await classGuardAPI.groups.list({ subject_id: subjectId });
+      const data = await groupsAPI.list({ subject_id: subjectId });
       setGroups(data);
     } catch (error) {
       console.error('Error loading groups:', error);
@@ -99,16 +100,17 @@ export default function SubjectDetailPage() {
     e.preventDefault();
 
     try {
-      const data = {
-        ...groupForm,
-        subject_id: subjectId
-      };
-
       if (editingGroup) {
-        // Update logic (no tenemos endpoint aún, pero lo dejaremos preparado)
-        alert('Funcionalidad de edición pendiente');
+        // ACTUALIZAR grupo existente
+        await groupsAPI.update(editingGroup.id, groupForm);
+        alert('Grupo actualizado exitosamente');
       } else {
-        await classGuardAPI.groups.create(data);
+        // CREAR nuevo grupo
+        const data = {
+          ...groupForm,
+          subject_id: subjectId
+        };
+        await groupsAPI.create(data);
         alert('Grupo creado exitosamente');
       }
 
@@ -118,6 +120,22 @@ export default function SubjectDetailPage() {
     } catch (error: any) {
       console.error('Error saving group:', error);
       alert(error.response?.data?.detail || 'Error al guardar el grupo');
+    }
+  };
+
+  const handleDeleteGroup = async (groupId: string, groupName: string) => {
+    if (!confirm(`¿Estás seguro de eliminar el grupo "${groupName}"?\n\nEsto desmatriculará a todos los estudiantes del grupo.`)) {
+      return;
+    }
+
+    try {
+      await groupsAPI.delete(groupId);
+      alert('Grupo eliminado exitosamente');
+      loadGroups();
+      loadSubjectDetail();
+    } catch (error: any) {
+      console.error('Error deleting group:', error);
+      alert(error.response?.data?.detail || 'Error al eliminar el grupo');
     }
   };
 
@@ -238,9 +256,17 @@ export default function SubjectDetailPage() {
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleEditGroup(group)}
-                        className="p-2 hover:bg-purple-100 rounded-lg"
+                        className="p-2 hover:bg-purple-100 rounded-lg transition-all"
+                        title="Editar grupo"
                       >
                         <Edit className="w-4 h-4 text-purple-600" />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteGroup(group.id, group.name)}
+                        className="p-2 hover:bg-red-100 rounded-lg transition-all"
+                        title="Eliminar grupo"
+                      >
+                        <Trash2 className="w-4 h-4 text-red-600" />
                       </button>
                     </div>
                   </div>
@@ -274,7 +300,7 @@ export default function SubjectDetailPage() {
                     </div>
                     <button
                       onClick={() => handleManageStudents(group.id)}
-                      className="px-4 py-2 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 flex items-center gap-2"
+                      className="px-4 py-2 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 flex items-center gap-2 transition-all"
                     >
                       <UserPlus className="w-4 h-4" />
                       Gestionar

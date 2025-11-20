@@ -1,4 +1,4 @@
-# backend/app/models/metrics.py (ACTUALIZADO)
+# backend/app/models/metrics.py
 """
 Modelos de métricas actualizados para Class Guard
 Conectados con el nuevo sistema de Grupos y Asignaturas

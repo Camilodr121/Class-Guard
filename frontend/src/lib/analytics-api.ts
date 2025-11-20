@@ -1,4 +1,5 @@
 // frontend/src/lib/analytics-api.ts
+
 /**
  * API Client para Class Guard - Sistema de Análisis y Métricas
  * Integrado con el nuevo sistema de Asignaturas y Grupos
@@ -125,6 +126,31 @@ export const groupsAPI = {
   },
 
   /**
+   * Actualizar un grupo
+   */
+  update: async (groupId: string, data: {
+    name?: string;
+    code?: string;
+    schedule_day?: string;
+    schedule_time?: string;
+    duration_minutes?: number;
+    classroom?: string;
+    max_students?: number;
+    is_active?: boolean;
+  }) => {
+    const response = await api.put(`${API_BASE}/academic/groups/${groupId}`, data);
+    return response.data;
+  },
+
+  /**
+   * Eliminar un grupo (soft delete)
+   */
+  delete: async (groupId: string) => {
+    const response = await api.delete(`${API_BASE}/academic/groups/${groupId}`);
+    return response.data;
+  },
+
+  /**
    * Matricular múltiples estudiantes
    */
   enrollStudentsBulk: async (groupId: string, studentIds: string[]) => {
@@ -156,7 +182,21 @@ export const sessionsAPI = {
     const response = await api.post(`${API_BASE}/sessions/start`, null, {
       params: { group_id: groupId, notes },
     });
-    return response.data;
+    
+    // ✅ CORRECCIÓN: Mapear session_id a id para consistencia
+    const data = response.data;
+    return {
+      id: data.session_id,           // ✅ Mapear session_id → id
+      session_id: data.session_id,   // ✅ Mantener original también
+      group_id: data.group_id,
+      group_name: data.group_name,
+      subject_id: data.subject_id,
+      subject_name: data.subject_name,
+      started_at: data.started_at,
+      status: data.status,
+      expected_students: data.expected_students,
+      present_students: data.present_students
+    };
   },
 
   /**
@@ -172,7 +212,24 @@ export const sessionsAPI = {
    */
   getActive: async () => {
     const response = await api.get(`${API_BASE}/sessions/active`);
-    return response.data;
+    
+    // ✅ CORRECCIÓN: Mapear session_id a id
+    const data = response.data;
+    if (data.session_id) {
+      return {
+        id: data.session_id,
+        session_id: data.session_id,
+        group_id: data.group_id,
+        group_name: data.group_name,
+        subject_id: data.subject_id,
+        subject_name: data.subject_name,
+        started_at: data.started_at,
+        status: data.status,
+        expected_students: data.expected_students,
+        present_students: data.present_students
+      };
+    }
+    return data; // Si no hay sesión activa
   },
 
   /**
@@ -233,7 +290,8 @@ export const sessionsAPI = {
   },
 };
 
-// ==================== ANALYTICS API (Mantener existente) ====================
+
+// ==================== ANALYTICS API ====================
 
 export const analyticsAPI = {
   /**
@@ -359,7 +417,8 @@ export const studentsAPI = {
   },
 };
 
-// Exportar todo junto
+// ==================== DEFAULT EXPORT ====================
+
 export default {
   subjects: subjectsAPI,
   groups: groupsAPI,
@@ -368,4 +427,28 @@ export default {
   dashboard: dashboardAPI,
   alerts: alertsAPI,
   students: studentsAPI,
+  
+  // ✅ AGREGADO: Alias directo para getGroups
+  getGroups: async () => {
+    const response = await api.get(`${API_BASE}/academic/groups`);
+    return response.data;
+  },
+  
+  // ✅ AGREGADO: Alias directo para getSubjects
+  getSubjects: async () => {
+    const response = await api.get(`${API_BASE}/academic/subjects`);
+    return response.data;
+  },
 };
+
+// ==================== NAMED EXPORTS FOR COMPATIBILITY ====================
+export const getGroups = async () => {
+  const response = await api.get(`${API_BASE}/academic/groups`);
+  return response.data;
+};
+
+export const getSubjects = async () => {
+  const response = await api.get(`${API_BASE}/academic/subjects`);
+  return response.data;
+};
+

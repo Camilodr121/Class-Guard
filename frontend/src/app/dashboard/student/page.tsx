@@ -97,41 +97,43 @@ if (timelineData.timeline && timelineData.timeline.length > 0) {
   }, [userId]);
 
   // Obtener user ID y sesión al cargar
+    // 🔍 BUSCAR SESIÓN ACTIVA (SIN SESIÓN TEMPORAL)
   useEffect(() => {
-    const token = localStorage.getItem('access_token');
-    if (token && !userId) {
-      fetch('http://localhost:8000/api/auth/me', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      })
-        .then(res => res.json())
-        .then(data => {
-          console.log('✅ Usuario obtenido:', data.id);
-          setUserId(data.id);
-          return fetch('http://localhost:8000/api/classes/sessions/active', {
-            headers: { 'Authorization': `Bearer ${token}` }
-          });
-        })
-        .then(res => {
-          if (res && res.ok) {
-            return res.json();
-          }
-          console.log('⚠️ No hay sesión activa, usando sesión temporal');
-          return { session_id: null };
-        })
-        .then(data => {
-          if (data.session_id) {
-            setSessionId(data.session_id);
-            console.log('✅ Sesión activa encontrada:', data.session_id);
-          } else {
-            setSessionId('temp-session');
-            console.log('ℹ️ Usando sesión temporal');
-          }
-        })
-        .catch(err => {
-          console.error('Error:', err);
-          setSessionId('temp-session');
+    const checkActiveSession = async () => {
+      const token = localStorage.getItem('access_token');
+      if (!token || userId) return;
+      
+      try {
+        // 1️⃣ Obtener usuario
+        const userRes = await fetch('http://localhost:8000/api/auth/me', {
+          headers: { 'Authorization': `Bearer ${token}` }
         });
-    }
+        const userData = await userRes.json();
+        console.log('✅ Usuario obtenido:', userData.id);
+        setUserId(userData.id);
+        
+        // 2️⃣ Buscar sesión activa
+        const sessionRes = await fetch('http://localhost:8000/api/sessions/active/student', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (sessionRes.ok) {
+          const sessionData = await sessionRes.json();
+          setSessionId(sessionData.id);
+          console.log('✅ Sesión activa encontrada:', sessionData.id);
+          console.log('📚 Grupo:', sessionData.group_name);
+          console.log('📖 Materia:', sessionData.subject_name);
+        } else {
+          console.log('❌ No hay sesión activa');
+          setSessionId('');
+        }
+      } catch (error) {
+        console.error('❌ Error:', error);
+        setSessionId('');
+      }
+    };
+
+    checkActiveSession();
   }, [userId]);
 
   const calculateRealisticScore = useCallback(() => {

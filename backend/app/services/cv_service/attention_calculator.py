@@ -29,7 +29,7 @@ class AttentionCalculator:
         ear_threshold: float = 0.21,      # Umbral para pestañeos
         mar_threshold: float = 0.5,       # Umbral para bostezos
         ear_consec_frames: int = 2,       # 2 frames = ~100ms para confirmar pestañeo
-        mar_consec_frames: int = 8,       # 8 frames = ~400ms para confirmar bostezo real
+        mar_consec_frames: int = 8,       # 8 frames = ~400ms para confirmar bostezo
         head_pose_threshold: float = 40.0
     ):
         """

@@ -1,10 +1,12 @@
 // frontend/src/store/authStore.ts
+
 import { create } from 'zustand';
 import { User } from '@/types';
 import { authAPI } from '@/lib/api';
 
 interface AuthState {
   user: User | null;
+  token: string | null;  // ✅ AGREGADO
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;
@@ -16,6 +18,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
+  token: null,  // ✅ AGREGADO
   isAuthenticated: false,
   isLoading: false,
   error: null,
@@ -28,11 +31,18 @@ export const useAuthStore = create<AuthState>((set) => ({
       localStorage.setItem('refresh_token', tokens.refresh_token);
       
       const user = await authAPI.getCurrentUser();
-      set({ user, isAuthenticated: true, isLoading: false });
-    } catch (error: any) {
+      
+      // ✅ AGREGADO: Guardar token en el estado
       set({ 
-        error: error.response?.data?.detail || 'Login failed', 
+        user, 
+        token: tokens.access_token,  // ✅ AGREGADO
+        isAuthenticated: true, 
         isLoading: false 
+      });
+    } catch (error: any) {
+      set({
+        error: error.response?.data?.detail || 'Login failed',
+        isLoading: false
       });
       throw error;
     }
@@ -44,9 +54,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       await authAPI.register(data);
       set({ isLoading: false });
     } catch (error: any) {
-      set({ 
-        error: error.response?.data?.detail || 'Registration failed', 
-        isLoading: false 
+      set({
+        error: error.response?.data?.detail || 'Registration failed',
+        isLoading: false
       });
       throw error;
     }
@@ -54,7 +64,11 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   logout: () => {
     authAPI.logout();
-    set({ user: null, isAuthenticated: false });
+    set({ 
+      user: null, 
+      token: null,  // ✅ AGREGADO
+      isAuthenticated: false 
+    });
   },
 
   fetchCurrentUser: async () => {
@@ -64,9 +78,16 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true });
     try {
       const user = await authAPI.getCurrentUser();
-      set({ user, isAuthenticated: true, isLoading: false });
+      
+      // ✅ AGREGADO: Guardar token en el estado
+      set({ 
+        user, 
+        token,  // ✅ AGREGADO
+        isAuthenticated: true, 
+        isLoading: false 
+      });
     } catch (error) {
-      set({ isLoading: false });
+      set({ isLoading: false, token: null });  // ✅ MODIFICADO
       authAPI.logout();
     }
   },

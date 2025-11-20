@@ -1,4 +1,5 @@
 # backend/app/api/endpoints/websocket.py
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -22,7 +23,6 @@ async def get_current_user_ws(token: str, db: Session) -> Optional[User]:
         payload = verify_token(token)
         if not payload:
             return None
-        
         user_id = payload.get("sub")
         user = db.query(User).filter(User.id == user_id).first()
         return user
@@ -39,7 +39,6 @@ async def websocket_endpoint(
     db: Session = Depends(get_db)
 ):
     """Endpoint principal de WebSocket"""
-    
     # Verificar autenticación
     user = await get_current_user_ws(token, db)
     if not user or str(user.id) != user_id:
@@ -49,20 +48,34 @@ async def websocket_endpoint(
     # Conectar usuario
     await ws_manager.connect(websocket, user_id, user.role, session_id)
     
-    # Si hay sesión y es estudiante, registrar asistencia automáticamente
+    # Si hay sesión y es estudiante, verificar o registrar asistencia
     attendance_id = None
     if session_id and user.role == "student":
         try:
             session_uuid = UUID(session_id)
-            attendance = persistence_service.record_attendance(
-                db, 
-                AttendanceCreate(session_id=session_uuid, student_id=user.id)
-            )
-            attendance_id = str(attendance.id)
-            print(f"✅ Asistencia registrada: {attendance_id}")
+        
+            # ✅ VERIFICAR si ya existe asistencia activa
+            existing_attendance = db.query(SessionAttendance).filter(
+                SessionAttendance.session_id == session_uuid,
+                SessionAttendance.student_id == user.id,
+                SessionAttendance.left_at.is_(None)  # Aún activa
+            ).first()
+        
+            if existing_attendance:
+                # Ya existe una asistencia activa, reutilizarla
+                attendance_id = str(existing_attendance.id)
+                print(f"✅ Asistencia existente reutilizada: {attendance_id}")
+            else:
+                # No existe, crear una nueva
+                attendance = persistence_service.record_attendance(
+                    db,
+                    AttendanceCreate(session_id=session_uuid, student_id=user.id)
+                )
+                attendance_id = str(attendance.id)
+                print(f"✅ Nueva asistencia registrada: {attendance_id}")
         except Exception as e:
-            print(f"⚠️ Error registrando asistencia: {e}")
-    
+            print(f"⚠️ Error gestionando asistencia: {e}")
+            
     try:
         await websocket.send_json({
             'type': 'CONNECTION_SUCCESS',
@@ -84,6 +97,8 @@ async def websocket_endpoint(
                 })
             
             elif message_type == 'ATTENTION_METRICS':
+                print(f"\n🎯 RECIBIDO: ATTENTION_METRICS de {user_id}")
+                print(f"   📦 Data completo: {data}")
                 await process_attention_metrics(data, user_id, user.role, session_id, db)
             
             elif message_type == 'START_MONITORING':
@@ -146,28 +161,36 @@ async def websocket_endpoint(
         traceback.print_exc()
         ws_manager.disconnect(websocket, user_id, session_id)
 
+
 async def process_attention_metrics(data: dict, user_id: str, user_role: str, session_id: str, db: Session):
     """Procesa las métricas de atención recibidas del estudiante"""
     try:
         print(f"\n📊 Procesando métricas de atención para usuario: {user_id}")
         
+        # ✅ CORRECCIÓN: Leer del objeto metrics correctamente
         metrics = data.get('metrics', {})
-        print(f"   📥 Métricas recibidas: {metrics}")
-        
-        # Calcular score y nivel
         score = metrics.get('attention_score', 75)
-        level = metrics.get('attention_level', 'MEDIUM')
+        level_map = {
+            'LOW': AttentionLevel.LOW,
+            'MEDIUM': AttentionLevel.MEDIUM,
+            'HIGH': AttentionLevel.HIGH
+        }
+        level = level_map.get(metrics.get('attention_level', 'MEDIUM'), AttentionLevel.MEDIUM)
         
+        print(f"   📥 Métricas recibidas: {metrics}")
+        print(f"   📊 Score: {score}, Nivel: {level}")
+        
+        # ✅ Usar los nombres correctos
         processed_metrics = {
             'student_id': user_id,
             'attention_score': score,
-            'attention_level': level,
+            'attention_level': str(level.value) if hasattr(level, 'value') else str(level),
             'confidence': 0.8,
             'probabilities': {'low': 0.2, 'medium': 0.3, 'high': 0.5},
             'ear': metrics.get('ear', 0),
             'mar': metrics.get('mar', 0),
-            'blinks': metrics.get('blinks', 0),
-            'yawns': metrics.get('yawns', 0),
+            'blinks': metrics.get('blinks', 0),  # ✅ CORREGIDO
+            'yawns': metrics.get('yawns', 0),    # ✅ CORREGIDO
             'looking_away': metrics.get('looking_away', False),
             'head_pose': metrics.get('head_pose', {}),
             'using_ml': False
@@ -214,12 +237,24 @@ async def process_attention_metrics(data: dict, user_id: str, user_role: str, se
                 ).first()
                 
                 if attendance:
-                    if metrics.get('blink_detected'):
-                        attendance.total_blinks += 1
-                    if metrics.get('yawn_detected'):
-                        attendance.total_yawns += 1
+                    # ✅ CORRECCIÓN: Actualizar con totales recibidos
+                    total_blinks = metrics.get('blinks', 0)
+                    total_yawns = metrics.get('yawns', 0)
+                    
+                    attendance.total_blinks = total_blinks
+                    attendance.total_yawns = total_yawns
+                    
+                    # ✅ Actualizar score promedio acumulativo
+                    if attendance.average_attention_score is None:
+                        attendance.average_attention_score = float(score)
+                    else:
+                        # Promedio móvil
+                        attendance.average_attention_score = (
+                            attendance.average_attention_score * 0.9 + float(score) * 0.1
+                        )
+                    
                     db.commit()
-                    print(f"   ✅ Totales actualizados: {attendance.total_blinks} pestañeos, {attendance.total_yawns} bostezos")
+                    print(f"   ✅ Totales actualizados: {attendance.total_blinks} pestañeos, {attendance.total_yawns} bostezos, Promedio: {attendance.average_attention_score:.2f}")
                 
                 # Generar alerta si la atención es baja
                 if score < 40:
@@ -232,40 +267,59 @@ async def process_attention_metrics(data: dict, user_id: str, user_role: str, se
                     )
                     alert = persistence_service.save_alert(db, alert_data)
                     print(f"   🚨 Alerta generada: {alert.id}")
-                
+            
             except Exception as e:
                 print(f"   ❌ Error guardando en BD: {e}")
                 import traceback
                 traceback.print_exc()
         else:
-            print(f"   ℹ️  Modo demo: no se guarda en BD (session_id: {session_id})")
+            print(f"   ℹ️ Modo demo: no se guarda en BD (session_id: {session_id})")
         
         # Obtener el profesor de la sesión
         teacher_id = None
         if session_id and session_id != 'temp-session':
             try:
-                session = db.query(ClassSession).filter(
+                from sqlalchemy.orm import joinedload
+                from app.models.academic import Group
+                
+                session = db.query(ClassSession).options(
+                    joinedload(ClassSession.group).joinedload(Group.subject)
+                ).filter(
                     ClassSession.id == UUID(session_id)
                 ).first()
-                if session and session.class_obj:
-                    teacher_id = str(session.class_obj.teacher_id)
+                
+                if session and session.group and session.group.subject:
+                    teacher_id = str(session.group.subject.teacher_id)
+                    print(f"   👨‍🏫 Profesor encontrado: {teacher_id}")
+                else:
+                    print(f"   ⚠️ Sesión sin grupo/asignatura asignado")
             except Exception as e:
                 print(f"   ⚠️ Error obteniendo profesor: {e}")
+                import traceback
+                traceback.print_exc()
         
-        # Enviar actualización al profesor y al estudiante
-        await ws_manager.send_attention_update(
-            session_id or "demo-session",
-            user_id,
-            processed_metrics,
-            teacher_id
-        )
+        # Enviar actualización al profesor
+        print(f"\n📤 Broadcasting métricas:")
+        print(f"   👤 Estudiante: {user_id}")
+        print(f"   📊 Score: {score}")
+        print(f"   🎯 Sesión: {session_id}")
         
-        print(f"   ✅ Métricas enviadas via WebSocket")
+        if teacher_id:
+            await ws_manager.send_attention_update(
+                session_id or "demo-session",
+                user_id,
+                processed_metrics,
+                teacher_id
+            )
+            print(f"   ✅ Enviado al profesor: {teacher_id}")
         
+        print(f" ✅ Métricas enviadas via WebSocket al profesor {teacher_id}")
+    
     except Exception as e:
         print(f"❌ Error processing attention metrics: {e}")
         import traceback
         traceback.print_exc()
+
 
 async def get_class_statistics(session_id: str, db: Session) -> dict:
     """Obtiene estadísticas agregadas de la clase"""
@@ -310,6 +364,7 @@ async def get_class_statistics(session_id: str, db: Session) -> dict:
             'students_medium': stats['MEDIUM'],
             'students_low': stats['LOW']
         }
+    
     except Exception as e:
         print(f"Error getting stats: {e}")
         return {
@@ -321,10 +376,12 @@ async def get_class_statistics(session_id: str, db: Session) -> dict:
             'students_low': 0
         }
 
+
 @router.get("/ws/stats")
 async def get_websocket_stats():
     """Endpoint HTTP para obtener estadísticas del sistema WebSocket"""
     return ws_manager.get_stats()
+
 
 @router.get("/ws/session/{session_id}/info")
 async def get_session_info(session_id: str):

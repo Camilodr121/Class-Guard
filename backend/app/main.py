@@ -13,7 +13,8 @@ from app.db.session import engine, Base
 
 # Importar TODOS los modelos para que SQLAlchemy los conozca
 from app.models import user, academic, metrics
-
+from app.api.endpoints import students
+from app.api.endpoints import auth, cv, metrics, sessions, academic, students, websocket, analytics, alerts
 # Importar routers
 from app.api.endpoints import (
     auth,
@@ -67,7 +68,11 @@ app = FastAPI(
 # Configurar CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:3001",
+    ],  # ✅ Lista hardcodeada directamente
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -124,6 +129,13 @@ app.include_router(
     tags=["Class Sessions"]
 )
 
+app.include_router(
+    students.router, 
+    prefix="/api/students", 
+    tags=["students"]
+)
+
+
 # Metrics endpoints
 app.include_router(
     metrics_router.router,
@@ -137,6 +149,13 @@ app.include_router(
     prefix="/api/analytics",
     tags=["Analytics"]
 )
+
+app.include_router(
+    alerts.router, 
+    prefix="/api/alerts", 
+    tags=["alerts"]
+)
+
 
 # Students endpoints
 app.include_router(
