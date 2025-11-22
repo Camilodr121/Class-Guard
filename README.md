@@ -52,7 +52,7 @@ Tu bienestar es importante. Class Guard te ayuda a ser consciente de tu cansanci
 
 Al entrar, verás un resumen de tu estado actual. No es para juzgarte, sino para informarte.
 
-> **📸 INSERTAR AQUÍ: Captura del Dashboard Principal del Estudiante**
+> **Captura del Dashboard Principal del Estudiante**
 > *(Toma la captura en la ruta: `/dashboard/student`)*
 >
 > **En la imagen superior puedes observar:**
@@ -64,7 +64,8 @@ Al entrar, verás un resumen de tu estado actual. No es para juzgarte, sino para
 Cuando te unes a una clase en vivo, el sistema te acompaña silenciosamente.
 
 > **📸 INSERTAR AQUÍ: Captura de la Vista "Live" del Estudiante**
-> *(Toma la captura en la ruta: `/dashboard/student/live` con la cámara activa)*
+> *<img width="1901" height="909" alt="image" src="https://github.com/user-attachments/assets/24db4251-480a-4d56-870e-23f7d0f90a4b" />
+*
 >
 > **En la imagen superior puedes observar:**
 > *   **Tu Espejo Digital:** Un recuadro pequeño donde puedes verificar que tu cámara te enfoca bien.
