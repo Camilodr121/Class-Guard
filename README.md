@@ -53,6 +53,17 @@ undefined
 
 ---
 
+***
+
+### ¿Por qué esto sí funciona?
+En lugar de escribir código que tu visor puede o no entender, he generado una URL permanente que convierte el código en una imagen `.png` real.
+- **Ventaja:** Se ve idéntica en todos lados.
+- **Desventaja:** Si quieres editar el texto del gráfico, tendrás que pedirme que genere un nuevo link. Pero para un entregable final, esto es **mucho más seguro**.
+
+¡Pruébalo y dime si ahora sí ves la gráfica correctamente
+
+
+
 ## 2. Primeros Pasos: Acceso al Sistema
 
 Para comenzar, necesitamos identificar tu rol en la institución. El sistema es seguro y tus datos están protegidos.
