@@ -67,9 +67,7 @@ Cuando te unes a una clase en vivo, el sistema te acompaña silenciosamente.
 
 > **Captura de la Vista "Live" del Estudiante**
 > *<img width="1889" height="820" alt="image" src="https://github.com/user-attachments/assets/55695f71-044f-442e-87f9-7aa437dd2815" />
-*
 > *<img width="1545" height="807" alt="image" src="https://github.com/user-attachments/assets/67604eb2-bb05-402c-803a-9b5add2151f4" />
-
 *
 >
 > **En las imagenes superiores puedes observar:**
@@ -84,10 +82,14 @@ Class Guard es tu copiloto. Te ayuda a entender qué estudiantes se están "desc
 
 ### 4.1 Panel de Control de Clases
 
-Aquí tienes la vista de pájaro de todos tus cursos.
+Aquí tienes la vista de todos tus cursos, materias y estudiantes.
 
-> **📸 INSERTAR AQUÍ: Captura del Dashboard General del Profesor**
-> *(Toma la captura en la ruta: `/dashboard/teacher/overview`)*
+> **Captura del Dashboard General del Profesor**
+> *<img width="1899" height="900" alt="image" src="https://github.com/user-attachments/assets/04331a52-f065-4866-969c-c08d6887357f" />
+  *<img width="1288" height="838" alt="image" src="https://github.com/user-attachments/assets/981f1b6b-69ca-4a4a-a341-925cbc41c72b" />
+  *<img width="1490" height="596" alt="image" src="https://github.com/user-attachments/assets/4b95ae98-c104-41e5-a1c8-b6c34e076707" />
+
+*
 >
 > **En la imagen superior puedes observar:**
 > Tarjetas individuales por cada materia que dictas. De un vistazo rápido, puedes ver el **Promedio Global de Atención** de cada grupo. Si una clase está en rojo antes de empezar, sabes que tendrás que poner un extra de energía hoy.
