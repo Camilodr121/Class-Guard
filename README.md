@@ -24,43 +24,11 @@ Sabemos que la educación virtual presenta retos únicos, tanto para quien ense�
 
 ## 1. ¿Cómo funciona Class Guard?
 
-Class Guard no graba video. El sistema utiliza un motor de Machine Learning que procesa señales biométricas en tiempo real para garantizar la privacidad y la eficiencia.
+Class Guard no graba video. El sistema utiliza un motor de Machine Learning que procesa señales biométricas en tiempo real.
 
-graph TD
-subgraph Cliente [Navegador del Estudiante]
-A[📷 Captura de Video] -->|Stream en vivo| B(🔍 Detección Facial)
-B --> C{Extracción de Puntos}
-C -->|Ojos| D[Cálculo EAR - Parpadeo]
-C -->|Boca| E[Cálculo MAR - Bostezos]
-end
+A continuación se muestra el flujo lógico de los datos:
 
-subgraph Procesamiento [Motor de Machine Learning]
-    D & E --> F[🧠 Modelo Predictivo]
-    F -->|Clasificación| G[Nivel de Atención %]
-end
-
-subgraph Acciones [Respuesta del Sistema]
-    G --> H{¿Atención Crítica?}
-    H -->|No - Normal| I[✅ Actualizar Dashboard]
-    H -->|Sí - Alerta| J[🚨 Notificar al Profesor]
-    J --> K[Registro en Historial]
-end
-
-style A fill:#f9f,stroke:#333,stroke-width:2px
-style F fill:#bbf,stroke:#333,stroke-width:2px
-style J fill:#f96,stroke:#333,stroke-width:2px
-undefined
-
----
-
-***
-
-### ¿Por qué esto sí funciona?
-En lugar de escribir código que tu visor puede o no entender, he generado una URL permanente que convierte el código en una imagen `.png` real.
-- **Ventaja:** Se ve idéntica en todos lados.
-- **Desventaja:** Si quieres editar el texto del gráfico, tendrás que pedirme que genere un nuevo link. Pero para un entregable final, esto es **mucho más seguro**.
-
-¡Pruébalo y dime si ahora sí ves la gráfica correctamente
+![Flujo de Trabajo Class Guard](https://mermaid.ink/img/eyJjb2RlIjogIlxuZ3JhcGggVERcbiAgICBzdWJncmFwaCBDbGllbnRlIFtOYXZlZ2Fkb3IgZGVsIEVzdHVkaWFudGVdXG4gICAgICAgIEFbXHVkODNkXHVkY2Y3IENhcHR1cmEgZGUgVmlkZW9dIC0tPnxTdHJlYW0gZW4gdml2b3wgQihcdWQ4M2RcdWRkMGQgRGV0ZWNjaVx1MDBmM24gRmFjaWFsKVxuICAgICAgICBCIC0tPiBDe0V4dHJhY2NpXHUwMGYzbiBkZSBQdW50b3N9XG4gICAgICAgIEMgLS0-fE9qb3N8IERbQ1x1MDBlMWxjdWxvIEVBUiAtIFBhcnBhZGVvXVxuICAgICAgICBDIC0tPnxCb2NhfCBFW0NcdTAwZTFsY3VsbyBNQVIgLSBCb3N0ZXpvc11cbiAgICBlbmRcblxuICAgIHN1YmdyYXBoIFByb2Nlc2FtaWVudG8gW01vdG9yIGRlIE1hY2hpbmUgTGVhcm5pbmddXG4gICAgICAgIEQgJiBFIC0tPiBGW1x1ZDgzZVx1ZGRlMCBNb2RlbG8gUHJlZGljdGl2b11cbiAgICAgICAgRiAtLT58Q2xhc2lmaWNhY2lcdTAwZjNufCBHW05pdmVsIGRlIEF0ZW5jaVx1MDBmM24gJV1cbiAgICBlbmRcblxuICAgIHN1YmdyYXBoIEFjY2lvbmVzIFtSZXNwdWVzdGEgZGVsIFNpc3RlbWFdXG4gICAgICAgIEcgLS0-IEh7XHUwMGJmQXRlbmNpXHUwMGYzbiBDclx1MDBlZHRpY2E_fVxuICAgICAgICBIIC0tPnxObyAtIE5vcm1hbHwgSVtcdTI3MDUgQWN0dWFsaXphciBEYXNoYm9hcmRdXG4gICAgICAgIEggLS0-fFNcdTAwZWQgLSBBbGVydGF8IEpbXHVkODNkXHVkZWE4IE5vdGlmaWNhciBhbCBQcm9mZXNvcl1cbiAgICAgICAgSiAtLT4gS1tSZWdpc3RybyBlbiBIaXN0b3JpYWxdXG4gICAgZW5kXG5cbiAgICBzdHlsZSBBIGZpbGw6I2Y5ZixzdHJva2U6IzMzMyxzdHJva2Utd2lkdGg6MnB4XG4gICAgc3R5bGUgRiBmaWxsOiNiYmYsc3Ryb2tlOiMzMzMsc3Ryb2tlLXdpZHRoOjJweFxuICAgIHN0eWxlIEogZmlsbDojZjk2LHN0cm9rZTojMzMzLHN0cm9rZS13aWR0aDoycHhcbiIsICJtZXJtYWlkIjogeyJ0aGVtZSI6ICJkZWZhdWx0In19)
 
 
 
