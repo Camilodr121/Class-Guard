@@ -37,8 +37,7 @@ A continuación se muestra el flujo lógico de los datos:
 Para comenzar, necesitamos identificar tu rol en la institución. El sistema es seguro y tus datos están protegidos.
 
 > **Captura de la pantalla de Login**
-> *(<img width="804" height="886" alt="image" src="https://github.com/user-attachments/assets/cd922ea0-2f34-40d3-88fa-c35c1dcbea5c" />
-: `/login`)*
+> *<img width="804" height="886" alt="image" src="https://github.com/user-attachments/assets/cd922ea0-2f34-40d3-88fa-c35c1dcbea5c" />*
 >
 > **En la imagen superior puedes observar:**
 > Nuestra interfaz de bienvenida. Aquí deberás ingresar tu correo institucional y contraseña. El sistema, gracias a su backend robusto, detectará automáticamente si eres **Profesor** o **Estudiante** y te llevará al entorno adecuado para ti.
