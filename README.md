@@ -53,7 +53,9 @@ Tu bienestar es importante. Class Guard te ayuda a ser consciente de tu cansanci
 Al entrar, verás un resumen de tu estado actual. No es para juzgarte, sino para informarte.
 
 > **Captura del Dashboard Principal del Estudiante**
-> *(Toma la captura en la ruta: `/dashboard/student`)*
+> *<img width="1863" height="886" alt="image" src="https://github.com/user-attachments/assets/ec370c8d-8d26-4be9-a446-ea7e9789c9cb" />
+
+*
 >
 > **En la imagen superior puedes observar:**
 > *   **Tu Nivel de Energía:** Un indicador visual que te dice si estás "Fresco", "Estable" o "Necesitas un descanso".
@@ -63,11 +65,14 @@ Al entrar, verás un resumen de tu estado actual. No es para juzgarte, sino para
 
 Cuando te unes a una clase en vivo, el sistema te acompaña silenciosamente.
 
-> **📸 INSERTAR AQUÍ: Captura de la Vista "Live" del Estudiante**
-> *<img width="1901" height="909" alt="image" src="https://github.com/user-attachments/assets/24db4251-480a-4d56-870e-23f7d0f90a4b" />
+> **Captura de la Vista "Live" del Estudiante**
+> *<img width="1889" height="820" alt="image" src="https://github.com/user-attachments/assets/55695f71-044f-442e-87f9-7aa437dd2815" />
+*
+> *<img width="1545" height="807" alt="image" src="https://github.com/user-attachments/assets/67604eb2-bb05-402c-803a-9b5add2151f4" />
+
 *
 >
-> **En la imagen superior puedes observar:**
+> **En las imagenes superiores puedes observar:**
 > *   **Tu Espejo Digital:** Un recuadro pequeño donde puedes verificar que tu cámara te enfoca bien.
 > *   **Feedback en Vivo:** Si el sistema detecta, por ejemplo, muchos bostezos seguidos, verás un aviso suave sugiriéndote estirarte o tomar agua. ¡Es como un asistente personal de salud!
 
