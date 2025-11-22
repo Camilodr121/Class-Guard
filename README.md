@@ -24,7 +24,7 @@ Sabemos que la educación virtual presenta retos únicos, tanto para quien ense�
 
 ## 1. ¿Cómo funciona Class Guard?
 
-Class Guard no graba video. En su lugar, utiliza un proceso avanzado de procesamiento de datos en tiempo real. Aquí te explicamos el flujo lógico de lo que sucede "bajo el capó":
+Class Guard no graba video. En su lugar, utiliza un proceso avanzado de procesamiento de datos en tiempo real. Aquí te explicamos el flujo lógico de lo que sucede internamente:
 
 **Flujo de Procesamiento de Datos**
 
