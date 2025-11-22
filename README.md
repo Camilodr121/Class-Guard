@@ -98,8 +98,9 @@ Aquí tienes la vista de todos tus cursos, materias y estudiantes.
 
 Esta es la herramienta más potente. Mientras dictas tu clase, ten esta ventana abierta.
 
-> **📸 INSERTAR AQUÍ: Captura de la Grilla de Estudiantes en Vivo**
-> *(Toma la captura en la ruta: `/dashboard/teacher/live/[id]`)*
+> **Captura de la Grilla de Estudiantes en Vivo**
+> *<img width="1290" height="820" alt="image" src="https://github.com/user-attachments/assets/3888a850-9538-47c6-aa8a-3915ae9c62d0" />
+*
 >
 > **En la imagen superior puedes observar:**
 > Una matriz con todos tus estudiantes conectados.
@@ -110,8 +111,9 @@ Esta es la herramienta más potente. Mientras dictas tu clase, ten esta ventana 
 
 No necesitas mirar la pantalla todo el tiempo. El sistema te avisará si algo requiere tu intervención inmediata.
 
-> **📸 INSERTAR AQUÍ: Captura de una Notificación de Alerta**
-> *(Toma la captura del panel de notificaciones o un pop-up de alerta)*
+> **Captura de una Notificación de Alerta**
+> *<img width="1875" height="901" alt="image" src="https://github.com/user-attachments/assets/bb18908c-0684-40b7-8f91-307c8f9ecef7" />
+*
 >
 > **En la imagen superior puedes observar:**
 > Una alerta clara y directa: *"El estudiante Juan Pérez ha bajado su atención al 30%"*. Esto te permite hacer una pregunta dirigida: *"Juan, ¿qué opinas de este punto?"*, recuperando su atención de manera natural y pedagógica.
@@ -120,8 +122,12 @@ No necesitas mirar la pantalla todo el tiempo. El sistema te avisará si algo re
 
 El aprendizaje es de doble vía. Si todos los estudiantes pierden atención al mismo tiempo, el sistema te lo hará saber.
 
-> **📸 INSERTAR AQUÍ: Captura de las Analíticas Históricas**
-> *(Toma la captura en la ruta: `/dashboard/teacher/analytics`)*
+> **Captura de las Analíticas Históricas**
+> *<img width="1884" height="900" alt="image" src="https://github.com/user-attachments/assets/46ec99f5-42e5-4502-8a85-8087f191b37e" />
+   <img width="1515" height="839" alt="image" src="https://github.com/user-attachments/assets/a6594212-6c12-4bf6-99ef-0232faa449bb" />
+   <img width="1402" height="618" alt="image" src="https://github.com/user-attachments/assets/16503b9c-4993-4a03-8fc4-d97d31943771" />
+
+*
 >
 > **En la imagen superior puedes observar:**
 > Gráficas de tendencia de la sesión.
