@@ -24,19 +24,31 @@ Sabemos que la educación virtual presenta retos únicos, tanto para quien ense�
 
 ## 1. ¿Cómo funciona Class Guard?
 
-Class Guard no graba video. En su lugar, utiliza un proceso avanzado de procesamiento de datos en tiempo real. Aquí te explicamos el flujo lógico de lo que sucede internamente:
+Class Guard no graba video. El sistema utiliza un motor de Machine Learning que procesa señales biométricas en tiempo real para garantizar la privacidad y la eficiencia.
 
-**Flujo de Procesamiento de Datos**
+gráfico TD
+subgrafo Cliente [Navegador del Estudiante]
+A[📷 Captura de Video] -->|Stream en vivo| B(🔍 Detección Facial con MediaPipe)
+B --> C{Extracción de Puntos}
+C -->|Ojos| D[Cálculo EAR - Parpadeo]
+C -->|Boca| E[Cálculo MAR - Bostezos]
+fin
 
-1. **Estudiante frente a Cámara** -> Captura de video en vivo
-2. **Detección de Puntos Faciales** -> El sistema ubica ojos y boca
-3. **Algoritmo de Machine Learning** -> Analiza patrones biométricos
-   - Frecuencia de Parpadeo (Fatiga Ocular)
-   - Apertura de Boca (Bostezos)
-4. **Cálculo de Nivel de Atención** -> Genera una métrica numérica
-5. **¿Nivel Crítico?**
-   - **NO:** Actualiza el Dashboard del Estudiante
-   - **SÍ:** Envía Alerta al Profesor
+subgraph Procesamiento [Motor de Machine Learning]
+    D & E --> F[🧠 Modelo Predictivo]
+    F -->|Clasificación| G[Nivel de Atención %]
+end
+
+subgraph Acciones [Respuesta del Sistema]
+    G --> H{¿Atención Crítica?}
+    H -->|No - Normal| I[✅ Actualizar Dashboard Estudiante]
+    H -->|Sí - Alerta| J[🚨 Notificar al Profesor]
+    J --> K[Registro en Historial]
+end
+
+style A fill:#f9f,stroke:#333,stroke-width:2px
+style F fill:#bbf,stroke:#333,stroke-width:2px
+style J fill:#f96,stroke:#333,stroke-width:2px
 
 ---
 
@@ -144,4 +156,3 @@ Hemos recopilado las situaciones más comunes para ayudarte a resolverlas rápid
 
 > **Nota Final del Equipo de Desarrollo:**
 > Class Guard ha sido construido siguiendo los más altos estándares de ingeniería de software y Machine Learning. Nuestro objetivo es crear un puente tecnológico que humanice la educación virtual, no que la robotice. ¡Gracias por usar nuestra plataforma!
-!
