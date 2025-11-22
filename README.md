@@ -26,13 +26,13 @@ Sabemos que la educación virtual presenta retos únicos, tanto para quien ense�
 
 Class Guard no graba video. El sistema utiliza un motor de Machine Learning que procesa señales biométricas en tiempo real para garantizar la privacidad y la eficiencia.
 
-gráfico TD
-subgrafo Cliente [Navegador del Estudiante]
-A[📷 Captura de Video] -->|Stream en vivo| B(🔍 Detección Facial con MediaPipe)
+graph TD
+subgraph Cliente [Navegador del Estudiante]
+A[📷 Captura de Video] -->|Stream en vivo| B(🔍 Detección Facial)
 B --> C{Extracción de Puntos}
 C -->|Ojos| D[Cálculo EAR - Parpadeo]
 C -->|Boca| E[Cálculo MAR - Bostezos]
-fin
+end
 
 subgraph Procesamiento [Motor de Machine Learning]
     D & E --> F[🧠 Modelo Predictivo]
@@ -41,7 +41,7 @@ end
 
 subgraph Acciones [Respuesta del Sistema]
     G --> H{¿Atención Crítica?}
-    H -->|No - Normal| I[✅ Actualizar Dashboard Estudiante]
+    H -->|No - Normal| I[✅ Actualizar Dashboard]
     H -->|Sí - Alerta| J[🚨 Notificar al Profesor]
     J --> K[Registro en Historial]
 end
@@ -49,6 +49,7 @@ end
 style A fill:#f9f,stroke:#333,stroke-width:2px
 style F fill:#bbf,stroke:#333,stroke-width:2px
 style J fill:#f96,stroke:#333,stroke-width:2px
+undefined
 
 ---
 
